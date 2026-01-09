@@ -1,0 +1,159 @@
+{
+    "title": "Smart Irrigation Dashboard",
+    "configuration": {
+        "description": "Monitor and control your Smart Irrigation System.",
+        "entityAliases": {
+            "9f9f9f9f-9f9f-9f9f-9f9f-9f9f9f9f9f9f": {
+                "id": "9f9f9f9f-9f9f-9f9f-9f9f-9f9f9f9f9f9f",
+                "alias": "My Irrigation Device",
+                "filter": {
+                    "type": "singleEntity",
+                    "singleEntity": {
+                        "entityType": "DEVICE",
+                        "id": "419fdae0-e9f5-11f0-9137-176e9da567e3"
+                    },
+                    "resolveMultiple": false
+                }
+            }
+        },
+        "widgets": {
+            "fe4d7280-1a2b-11ee-8e3b-c32267f81362": {
+                "isSystemType": true,
+                "bundleAlias": "digital_gauges",
+                "typeAlias": "digital_gauge",
+                "type": "latest",
+                "title": "Soil Moisture",
+                "sizeX": 4,
+                "sizeY": 3,
+                "row": 0,
+                "col": 0,
+                "config": {
+                    "datasources": [
+                        {
+                            "type": "entity",
+                            "entityAliasId": "9f9f9f9f-9f9f-9f9f-9f9f-9f9f9f9f9f9f",
+                            "dataKeys": [
+                                {
+                                    "name": "soil_moisture",
+                                    "type": "timeseries",
+                                    "label": "Moisture %",
+                                    "color": "#4caf50",
+                                    "settings": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "timewindow": {
+                        "realtime": {
+                            "timewindowMs": 60000
+                        }
+                    },
+                    "showTitle": true,
+                    "backgroundColor": "#fff",
+                    "padding": "8px",
+                    "settings": {
+                        "minValue": 0,
+                        "maxValue": 100,
+                        "gaugeType": "arc",
+                        "unitTitle": "%",
+                        "showUnitTitle": true,
+                        "showTimestamp": true,
+                        "showValue": true,
+                        "showMinMax": true,
+                        "gaugeColor": "#eeeeee",
+                        "levelColors": [
+                            "#f44336",
+                            "#ffc107",
+                            "#4caf50"
+                        ],
+                        "defaultColor": "#4caf50"
+                    }
+                }
+            },
+            "a1b2c3d4-1a2b-11ee-8e3b-c32267f81363": {
+                "isSystemType": true,
+                "bundleAlias": "cards",
+                "typeAlias": "state_card",
+                "type": "latest",
+                "title": "Pump Status",
+                "sizeX": 4,
+                "sizeY": 2,
+                "row": 0,
+                "col": 4,
+                "config": {
+                    "datasources": [
+                        {
+                            "type": "entity",
+                            "entityAliasId": "9f9f9f9f-9f9f-9f9f-9f9f-9f9f9f9f9f9f",
+                            "dataKeys": [
+                                {
+                                    "name": "pump_state",
+                                    "type": "timeseries",
+                                    "label": "Pump State",
+                                    "color": "#2196f3",
+                                    "settings": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "timewindow": {
+                        "realtime": {
+                            "timewindowMs": 60000
+                        }
+                    },
+                    "showTitle": true,
+                    "backgroundColor": "#fff",
+                    "padding": "8px",
+                    "settings": {
+                        "layout": "column",
+                        "autoScale": true
+                    }
+                }
+            },
+            "e5f6g7h8-1a2b-11ee-8e3b-c32267f81364": {
+                "isSystemType": true,
+                "bundleAlias": "charts",
+                "typeAlias": "basic_timeseries",
+                "type": "timeseries",
+                "title": "Moisture History",
+                "sizeX": 8,
+                "sizeY": 4,
+                "row": 3,
+                "col": 0,
+                "config": {
+                    "datasources": [
+                        {
+                            "type": "entity",
+                            "entityAliasId": "9f9f9f9f-9f9f-9f9f-9f9f-9f9f9f9f9f9f",
+                            "dataKeys": [
+                                {
+                                    "name": "soil_moisture",
+                                    "type": "timeseries",
+                                    "label": "Soil Moisture",
+                                    "color": "#4caf50",
+                                    "settings": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "timewindow": {
+                        "realtime": {
+                            "timewindowMs": 60000
+                        },
+                        "aggregation": {
+                            "type": "NONE",
+                            "limit": 25000
+                        }
+                    },
+                    "showTitle": true,
+                    "backgroundColor": "#fff",
+                    "padding": "8px",
+                    "settings": {
+                        "shadowSize": 4,
+                        "showLegend": true
+                    }
+                }
+            }
+        }
+    }
+}
