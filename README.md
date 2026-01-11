@@ -60,5 +60,10 @@ See **[WALKTHROUGH.md](WALKTHROUGH.md)** for detailed step-by-step instructions.
 *   **Weather**: Add your OpenWeatherMap API Key in `decision_core.py`.
 *   **Field Settings**: Use the **Dashboard Sidebar** to configure Crop, Soil, and Size instantly.
 
+## 🌐 Live Demo
+
+🚀 **AI-Powered Smart Irrigation Dashboard (Streamlit):**  
+https://ai-agent-irrigation-system.streamlit.app/
+
 ---
 *Built for AI Ignite Hackathon 2026*
