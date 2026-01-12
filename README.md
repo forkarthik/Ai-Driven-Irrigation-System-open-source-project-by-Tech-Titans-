@@ -63,7 +63,7 @@ See **[WALKTHROUGH.md](WALKTHROUGH.md)** for detailed step-by-step instructions.
 ## 🌐 Live Demo
 
 🚀 **AI-Powered Smart Irrigation Dashboard (Streamlit):**  
-[https://ai-driven-irrigation-systems.streamlit.app/]
+https://ai-driven-irrigation-systems.streamlit.app/
 
 ---
 *Built for AI Ignite Hackathon 2026*
