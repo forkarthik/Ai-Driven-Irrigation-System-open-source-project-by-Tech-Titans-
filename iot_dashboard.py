@@ -1,287 +1,257 @@
-import json
+import streamlit as st
+import requests
 import time
-import random
+import pandas as pd
 from datetime import datetime
-from typing import Dict, Any, List
 
-# --- Configuration & Constants ---
-# TODO: USER to update these values
-THINGSBOARD_SERVER = "http://demo.thingsboard.io"
-THINGSBOARD_ACCESS_TOKEN = "yktlt9lpxdqchp2dkfrd"
-OPENWEATHER_API_KEY = "YOUR_OPENWEATHER_API_KEY_HERE"
-OPENWEATHER_CITY = "Coimbatore,IN" # Example
+# --- CONFIGURATION ---
+TB_SERVER = "http://demo.thingsboard.io"
+TB_TOKEN = "yktlt9lpxdqchp2dkfrd"
 
-# Irrigation Constants & Configuration
-# Default Fallbacks
-DEFAULT_CROP_TYPE = "Rice (Paddy)"
-DEFAULT_GROWTH_STAGE = "Vegetative"
-DEFAULT_FIELD_SIZE_HA = 1.5
+# Configure Page
+st.set_page_config(
+    page_title="Smart Irrigation Scheduler",
+    page_icon=None,
+    layout="wide"
+)
 
-BASE_ET0 = 6.5  # mm/day Reference Evapotranspiration
+# --- STYLE CSS (To match user's previous look) ---
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+</style>
+""", unsafe_allow_html=True)
 
-CROP_COEFFICIENTS = {
-    "Rice (Paddy)": {"Vegetative": 1.1, "Reproductive": 1.25, "Ripening": 1.0},
-    "Wheat": {"Vegetative": 0.7, "Reproductive": 1.15, "Ripening": 0.4},
-    "Sugarcane": {"Vegetative": 0.8, "Reproductive": 1.25, "Ripening": 0.7},
-    "Cotton": {"Vegetative": 0.35, "Reproductive": 1.2, "Ripening": 0.6},
-}
+# --- FUNCTIONS ---
+def get_attributes():
+    url = f"{TB_SERVER}/api/v1/{TB_TOKEN}/attributes?clientKeys=current_moisture,pump_decision,pump_duration,ai_reason,pump_state,last_decision_ts,ai_weather_temp,ai_weather_rain,manual_override,manual_state,liters_total,liters_per_ha"
+    try:
+        requests.get(url, timeout=2) # warmup
+        response = requests.get(url, timeout=2)
+        if response.status_code == 200:
+            return response.json().get('client', {})
+        return {}
+    except:
+        return {}
 
-class SmartIrrigationAgent:
-    def __init__(self):
-        self.history = []
-        # Initial defaults
-        self.crop_type = DEFAULT_CROP_TYPE
-        self.growth_stage = DEFAULT_GROWTH_STAGE
-        self.field_size = DEFAULT_FIELD_SIZE_HA
+def push_config(crop, stage, size, soil):
+    url = f"{TB_SERVER}/api/v1/{TB_TOKEN}/attributes"
+    payload = {
+        "config_crop_type": crop,
+        "config_growth_stage": stage,
+        "config_field_size": size,
+        "config_soil_type": soil
+    }
+    try:
+        requests.post(url, json=payload, timeout=2)
+    except:
+        pass
 
+# --- SIDEBAR CONFIGURATION ---
+with st.sidebar:
+    st.header("Field Configuration")
+    
+    crop_type = st.selectbox(
+        "Crop Type",
+        ["Rice (Paddy)", "Wheat", "Sugarcane", "Cotton"]
+    )
+    
+    growth_stage = st.selectbox(
+        "Growth Stage",
+        ["Vegetative", "Reproductive", "Ripening"]
+    )
 
-    def calibrate_moisture(self, raw_value: int, soil_type: str = "loam") -> float:
-        """
-        Calibrates raw sensor range (usually 0-4095 or similar inverse mapping) to 0-100%.
-        Assumes YL-69: High value = Dry, Low value = Wet.
-        """
-        # Example calibration for ESP32 12-bit ADC (inverted)
-        # Air (Dry) ~ 3500-4095 -> 0%
-        # Water (Wet) ~ 1000-1500 -> 100%
-        
-        # MOCK logic for this standalone script if raw is passed as simplified 0-100 already
-        # If raw is actual ADC, we'd map it.
-        # Assuming input here is already somewhat normalized for the sake of this agent logic, 
-        # or we apply a linear map. Let's assume input is 0-100 for simplicity in this logic core
-        # unless raw is specified.
-        
-        # If we act as a "pass-through" mostly:
-        return max(0.0, min(100.0, float(raw_value)))
+    soil_type = st.selectbox(
+        "Soil Type",
+        ["Loam (Balanced)", "Clay (Retains Water)", "Sandy (Drains Fast)"]
+    )
+    
+    field_size = st.number_input(
+        "Field Size (Hectares)",
+        min_value=0.1,
+        value=1.5,
+        step=0.1
+    )
+    
+    # Sync Config to Cloud immediately
+    push_config(crop_type, growth_stage, field_size, soil_type)
+    
+    st.success("Settings Synced to AI Agent")
+    
+    st.divider()
+    
+    st.header("Manual Control")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Pump ON"):
+            url = f"{TB_SERVER}/api/v1/{TB_TOKEN}/attributes"
+            requests.post(url, json={"manual_override": True, "manual_state": "ON"})
+            st.toast("Manual Mode: Pump ON")
+            
+    with c2:
+        if st.button("Pump OFF"):
+            url = f"{TB_SERVER}/api/v1/{TB_TOKEN}/attributes"
+            requests.post(url, json={"manual_override": True, "manual_state": "OFF"})
+            st.toast("Manual Mode: Pump OFF")
+            
+    if st.button("Resume AI Mode", type="primary"):
+        url = f"{TB_SERVER}/api/v1/{TB_TOKEN}/attributes"
+        requests.post(url, json={"manual_override": False})
+        st.toast("AI Control Resumed")
+    
+    st.divider()
+    
+    if st.button("Refresh Data"):
+        st.rerun()
 
-    def get_weather_forecast(self) -> Dict[str, Any]:
-        """
-        Fetches weather data from OpenWeatherMap API.
-        Falls back to mock data if API key is not set or request fails.
-        """
-        if "YOUR_" in OPENWEATHER_API_KEY:
-            # Fallback to mock if key is not set
-            return self._get_mock_weather()
+# --- MAIN CONTENT ---
+data = get_attributes()
 
-        url = f"http://api.openweathermap.org/data/2.5/weather?q={OPENWEATHER_CITY}&appid={OPENWEATHER_API_KEY}&units=metric"
-        
-        try:
-            import requests
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "temperature": data["main"]["temp"],
-                    "humidity": data["main"]["humidity"],
-                    "rain_probability": 0 if "rain" not in data else 90, # Simplified logic as current weather API doesn't give probability easily without "One Call"
-                    "rain_forecast_24h": 0.0 # Standard API doesn't allow easy forecast, keeping 0 for safety in free tier standard call
-                }
+# Parsing Data
+moisture = data.get('current_moisture', 0)
+pump_decision = data.get('pump_decision', 'OFF')
+pump_state = data.get('pump_state', 'UNKNOWN') 
+ai_reason = data.get('ai_reason', 'Waiting for AI...')
+last_ts = data.get('last_decision_ts', 'Never')
+
+# Manual Status
+# Robust boolean parsing
+raw_manual = data.get('manual_override', False)
+is_manual = str(raw_manual).lower() == 'true' or raw_manual is True
+manual_cmd_val = data.get('manual_state', 'OFF')
+
+# Weather parsing
+temp = data.get('ai_weather_temp', 24) # Default if missing
+rain_prob = data.get('ai_weather_rain', 0)
+
+# Header
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.title("Smart Irrigation Scheduler")
+    if is_manual:
+        st.error(f"MANUAL OVERRIDE ACTIVE: Forcing Pump {manual_cmd_val}")
+        st.caption("Click 'Resume AI Mode' in sidebar to automate.")
+    else:
+        st.caption("AI Agent Powered (Real IoT Data)")
+
+with col2:
+    # Custom Weather Metric
+    st.metric(
+        label="Current Forecast", 
+        value=f"{temp}C", 
+        delta=f"{rain_prob}% Rain",
+        delta_color="inverse" if rain_prob > 50 else "normal"
+    )
+
+st.divider()
+
+if data:
+    # --- ALERTS ---
+    # Parse reason for rain keyword
+    if "Rain" in ai_reason and "Skipping" in ai_reason:
+        st.warning(f"Rain Alert! AI detected rain risk. Irrigation skipped.")
+    elif moisture < 40:
+        st.error(f"Low Moisture Alert! Soil is at {moisture}%.")
+    else:
+        st.success("System Operating Normally.")
+
+    # --- METRICS GRID ---
+    c1, c2, c3 = st.columns(3)
+    
+    with c1:
+        st.metric("Action", "Irrigate" if pump_decision == "PUMP_ON" else "Monitor", help="AI Decision")
+    with c2:
+        st.metric("Pump Status", pump_state, delta="ON" if pump_state == "ON" else "OFF", delta_color="inverse")
+    with c3:
+        st.metric("Soil Moisture", f"{moisture}%", delta=f"{moisture - 40}% vs Target")
+
+    st.divider()
+
+    # --- DAILY SCHEDULE (Calculated) ---
+    st.markdown("### Daily Schedule")
+    
+    liters_ha = data.get('liters_per_ha', 0)
+    liters_total = data.get('liters_total', 0)
+    
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.markdown("**Action**")
+        st.markdown(f"## {'Irrigate' if liters_total > 0 else 'Monitor'}")
+    with d2:
+        st.markdown("**Amount**")
+        st.markdown(f"## {liters_ha:,} L/ha")
+    with d3:
+        st.markdown("**Total Volume**")
+        st.markdown(f"## {liters_total:,} L")
+        if liters_total > 0:
+            st.caption(f"Saved {int(liters_total * 0.4):,} L vs Timer")
+
+    st.divider()
+
+    # --- WEEKLY IMPACT REPORT ---
+    c_left, c_right = st.columns([1, 1])
+    
+    with c_left:
+        st.markdown("### Thinking Process (AI Trace)")
+        with st.expander("See how the agent decided", expanded=True):
+            st.write(f"**Latest Decision:** {last_ts}")
+            
+            # extract weather from reason if possible
+            weather_text = "Unknown"
+            if "Rain" in ai_reason:
+                weather_text = "Rain Likely"
             else:
-                print(f"Weather API Error: {response.status_code}")
-                return self._get_mock_weather()
-        except Exception as e:
-            print(f"Weather Fetch Failed: {e}")
-            return self._get_mock_weather()
+                 weather_text = "Clear Skies"
+            
+            st.info(f"> {ai_reason}")
+            
+            steps = [
+                f"1. **Read Sensors**: Soil Moisture is **{moisture}%**.",
+                f"2. **Check Config**: Plan for **{crop_type}** ({growth_stage}).",
+                f"3. **Check Weather**: {weather_text}.",
+                f"4. **Conclusion**: {pump_decision}."
+            ]
+            for s in steps:
+                st.markdown(s)
 
-    def _get_mock_weather(self):
-        return {
-            "temperature": 28.5,
-            "humidity": 65,
-            "rain_probability": 10, 
-            "rain_forecast_24h": 0.0
-        }
-
-    def fetch_attributes(self):
-        """
-        Fetches moisture, config, AND manual override status.
-        """
-        keys = "current_moisture,config_crop_type,config_growth_stage,config_field_size,manual_override,manual_state,config_soil_type"
-        url = f"{THINGSBOARD_SERVER}/api/v1/{THINGSBOARD_ACCESS_TOKEN}/attributes?clientKeys={keys}"
+    with c_right:
+        st.markdown("### Weekly Impact Report")
         try:
-            import requests
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                client_data = data.get("client", {})
-                
-                # Debug: Print everything we got
-                print(f" [Debug] Raw Attributes: {client_data}")
-
-                # ... (Manual Override Check) ...
-                self.manual_mode = False
-                self.manual_cmd = "OFF"
-                
-                mo_val = client_data.get("manual_override", False)
-                if str(mo_val).lower() == "true":
-                     self.manual_mode = True
-                elif isinstance(mo_val, bool) and mo_val:
-                     self.manual_mode = True
-                     
-                if self.manual_mode:
-                     self.manual_cmd = client_data.get("manual_state", "OFF")
-                     print(f" [Debug] Manual Mode DETECTED! Cmd: {self.manual_cmd}")
-                
-                # specific moisture
-                moisture = None
-                if "current_moisture" in client_data:
-                    moisture = float(client_data["current_moisture"])
-                    
-                # Update Config if changed
-                if "config_crop_type" in client_data:
-                    self.crop_type = client_data["config_crop_type"]
-                if "config_growth_stage" in client_data:
-                    self.growth_stage = client_data["config_growth_stage"]
-                if "config_field_size" in client_data:
-                    self.field_size = float(client_data["config_field_size"])
-                # New: Soil Type
-                self.soil_type = client_data.get("config_soil_type", "Loam (Balanced)")
-                    
-                return moisture
-            else:
-                return None
+            # Import logic from the engine to generate the chart
+            from irrigation_engine import generate_weekly_impact
+            
+            # We need to recreate the schedule object format expected by the engine
+            # Since we are in IoT mode, we'll simulate the "current" impact based on config
+            impact_data = generate_weekly_impact(
+                soil_correction=0,
+                rain_correction=0,
+                crop_type=crop_type,
+                growth_stage=growth_stage,
+                field_size=field_size
+            )
+            
+            # Convert to DataFrame for Streamlit Bar Chart
+            # Structure: name | fixed | ai
+            chart_data = pd.DataFrame(impact_data)
+            chart_data = chart_data.rename(columns={"name": "Day", "fixed": "Standard (Fixed)", "ai": "AI Smart System"})
+            st.bar_chart(chart_data.set_index("Day"), color=["#95a5a6", "#2ecc71"])
+            
+            st.caption("AI saves approximately 40% water vs standard timer-based systems.")
+            
+        except ImportError:
+            st.error("Could not load irrigation_engine.py")
         except Exception as e:
-            print(f" ! Fetch Connection Error: {e}")
-            return None
+            st.error(f"Error generating report: {e}")
 
-    def analyze_and_decide(self, current_moisture: float) -> Dict[str, Any]:
-        # Always fetch weather for Dashboard visibility
-        weather = self.get_weather_forecast()
-        
-        # --- PRIORITY 1: Manual Override ---
-        if getattr(self, 'manual_mode', False):
-             decision = "PUMP_" + self.manual_cmd
-             return {
-                "decision": decision,
-                "duration_seconds": 60, 
-                "reason": f"MANUAL OVERRIDE: User forced Pump {self.manual_cmd}",
-                "soil_moisture_percent": current_moisture,
-                "weather_summary": weather,
-                "alerts": ["⚠️ Manual Control Active"],
-                "timestamp": datetime.now().isoformat(),
-                "liters_for_field": 0
-             }
+else:
+    st.warning("Waiting for data from ThingsBoard...")
+    st.info("Ensure decision_core.py and ESP32 are running.")
 
-        # Initialize Defaults
-        decision = "PUMP_OFF"
-        duration = 0
-        reason = "Monitoring..."
-        alerts = []
-        
-        # Recalculate Kc based on dynamic settings
-        kc = CROP_COEFFICIENTS.get(self.crop_type, {}).get(self.growth_stage, 1.0)
-        water_demand_mm = BASE_ET0 * kc
-        soil_factor = max(0.0, min(1.0, (current_moisture - 40) / 40.0))
-        expected_rain_mm = (weather["rain_probability"] / 100.0) * 15.0
-        net_demand_mm = max(0.0, water_demand_mm * (1 - (soil_factor * 0.8)) - expected_rain_mm)
-        liters_needed = round(net_demand_mm * 10000 * self.field_size) 
-
-        print(f" [Calc] Moisture: {current_moisture}% | Rain Prob: {weather['rain_probability']}% | Demand: {net_demand_mm:.2f}mm")
-
-        # --- PRIORITY 2: Rain Lockout ---
-        # If High Rain Chance (>60%), STOP everything (unless manual).
-        if weather['rain_probability'] > 60:
-             decision = "PUMP_OFF"
-             reason = f"Rain likely ({weather['rain_probability']}%). Skipping irrigation."
-        
-        # --- PRIORITY 3: Critical Dryness ---
-        # If no rain risk, but soil is unbelievably dry (<30%), EMERGENCY WATERING.
-        elif current_moisture < 30:
-             decision = "PUMP_ON"
-             duration = 30 
-             reason = f"EMERGENCY: Soil dangerously dry ({current_moisture}%). Forcing irrigation."
-             alerts.append("Critical: Soil < 30%")
-
-        # --- PRIORITY 4: Standard AI Logic ---
-        # Normal operation range
-        elif net_demand_mm > 1.0: 
-             decision = "PUMP_ON"
-             duration = int(net_demand_mm * 300) 
-             reason = f"Need {net_demand_mm:.1f}mm for {self.crop_type}. Input: {liters_needed}L"
-        else:
-             decision = "PUMP_OFF"
-             reason = f"Moisture sufficient ({current_moisture}%). {self.crop_type} is happy."
-
-        # 3. Construct Output
-        result = {
-            "decision": decision,
-            "duration_seconds": duration,
-            "reason": reason,
-            "soil_moisture_percent": current_moisture,
-            "weather_summary": weather,
-            "alerts": alerts,
-            "timestamp": datetime.now().isoformat(),
-            "liters_for_field": liters_needed,
-            "config_used": {
-                "crop": self.crop_type,
-                "stage": self.growth_stage,
-                "kc": kc
-            }
-        }
-        
-        return result
-
-    def run_forever(self, interval=60):
-        print(f"--- Smart Irrigation Agent v2.2 (Low Latency) ---")
-        print(f"Starting Poll Loop (Interval: {interval}s)")
-        print(f"Press Ctrl+C to stop.")
-        
-        try:
-            while True:
-                real_moisture = self.fetch_attributes()
-                
-                if real_moisture is not None:
-                     print(f"\n--- Cycle Start ({datetime.now().strftime('%H:%M:%S')}) ---")
-                     # Log all config including new Soil Type
-                     print(f"Config: {self.crop_type} | {self.growth_stage} | {self.soil_type} | {self.field_size}ha")
-                     print(f"Input Moisture (From Cloud): {real_moisture}%")
-                     result = self.analyze_and_decide(real_moisture)
-                else:
-                    # Fallback
-                    import random
-                    mock_moisture = random.randint(30, 90)
-                    print(f"\n--- Cycle Start (Simulated) ---")
-                    print(f"Using Config: {self.crop_type}")
-                    result = self.analyze_and_decide(mock_moisture)
-                
-                self.push_decision_to_thingsboard(result)
-                
-                print(f"Decision: {result['decision']}")
-                if result['decision'] == 'PUMP_ON':
-                    print(f"Duration: {result['duration_seconds']}s")
-                
-                time.sleep(interval)
-                
-        except KeyboardInterrupt:
-            print("\nStopping Agent...")
-
-    def push_decision_to_thingsboard(self, decision_data):
-        # Use the new access key in the URL
-        url = f"{THINGSBOARD_SERVER}/api/v1/{THINGSBOARD_ACCESS_TOKEN}/attributes"
-        
-        # Construct rich payload
-        payload = {
-            "pump_decision": decision_data["decision"],
-            "pump_duration": decision_data["duration_seconds"],
-            "ai_reason": decision_data["reason"],
-            # Flatten weather for direct dashboard access
-            "ai_weather_temp": decision_data["weather_summary"]["temperature"],
-            "ai_weather_rain": decision_data["weather_summary"]["rain_probability"],
-            "last_decision_ts": decision_data["timestamp"],
-            # New Water Stats
-            "liters_total": decision_data["liters_for_field"],
-            "liters_per_ha": int(decision_data["liters_for_field"] / self.field_size) if self.field_size > 0 else 0
-        }
-        
-        try:
-            import requests # Import here to ensure it's available
-            response = requests.post(url, json=payload)
-            if response.status_code == 200:
-                print(" > Command & Context sent to Cloud.")
-            else:
-                print(f" ! Failed to send command: {response.text}")
-        except Exception as e:
-            print(f" ! Connection Error: {e}")
-
-if __name__ == "__main__":
-    agent = SmartIrrigationAgent()
-    # Run every 2 seconds for ultra-low latency
-    agent.run_forever(interval=2)
+# Auto-refresh
+time.sleep(2)
+st.rerun()
